@@ -23,13 +23,34 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Backend API for the Pinval SICD project.
+
+The current prototype uses NestJS, Prisma and SQLite. Prisma keeps the data
+access layer isolated, so the database can be migrated to PostgreSQL later if
+the project needs a production-ready database engine.
 
 ## Project setup
 
 ```bash
 $ npm install
 ```
+
+Create a local `.env` file using `.env.example` as reference:
+
+```bash
+PORT=3000
+DATABASE_URL="file:./dev.db"
+```
+
+Current database:
+
+- SQLite for local development and prototype work.
+
+Future database:
+
+- PostgreSQL can be used later by changing `provider` in
+  `prisma/schema.prisma` and replacing `DATABASE_URL` with a PostgreSQL
+  connection string.
 
 ## Compile and run the project
 
