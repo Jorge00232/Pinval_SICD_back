@@ -1,13 +1,61 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
+}
+
+model StockValorizado {
+  index   Int    @id @default(autoincrement())
+  codigo  Int?
+  descrip String?
+  stock   Int?
+  prventa Int?
+  sbtotal Int?
+  prcosto Float?
+  sbtot   Int?
+
+  @@map("stockvalorizado")
+}
+
+model Ventas {
+  index    Int    @id @default(autoincrement())
+  codint   String?
+  descrip  String?
+  cantidad Int?
+  stock    Int?
+  ventas01 Int?
+  ventas02 Int?
+  ventas03 Int?
+  ventas04 Int?
+  ventas05 Int?
+  ventas06 Int?
+  ventas07 Int?
+  ventas08 Int?
+  ventas09 Int?
+  ventas10 Int?
+  ventas11 Int?
+  ventas12 Int?
+  ventas13 Int?
+  costoven Int?
+  stk01    Int?
+  stk02    Int?
+  stk03    Int?
+  stk04    Int?
+  stk05    Int?
+  stk06    Int?
+  stk07    Int?
+  stk08    Int?
+  stk09    Int?
+  stk10    Int?
+  stk11    Int?
+  stk12    Int?
+  familia  String?
+  prcosto  Float?
+
+  @@map("ventas")
 }
