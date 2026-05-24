@@ -6,8 +6,8 @@ type ProductResponse = {
   descrip: string;
   familia: string;
   stock: number;
-  stockReal: number;
-  stockIssue: 'NEGATIVE_STOCK' | null;
+  stockOriginal: number;
+  dataIssue: 'STOCK_NEGATIVO' | null;
   prcosto: number;
   prventa: number;
   minStock: number;
@@ -39,15 +39,15 @@ export class ProductsService {
     return stockRows.map((stock) => {
       const codigo = normalizeCode(stock.codigo);
       const venta = ventasByCode.get(codigo);
-      const stockReal = stock.stock ?? 0;
+      const stockOriginal = stock.stock ?? 0;
 
       return {
         codigo,
         descrip: stock.descrip ?? venta?.descrip ?? '',
         familia: venta?.familia ?? 'NO TIENE',
-        stock: Math.max(stockReal, 0),
-        stockReal,
-        stockIssue: stockReal < 0 ? 'NEGATIVE_STOCK' : null,
+        stock: Math.max(stockOriginal, 0),
+        stockOriginal,
+        dataIssue: stockOriginal < 0 ? 'STOCK_NEGATIVO' : null,
         prcosto: stock.prcosto ?? venta?.prcosto ?? 0,
         prventa: stock.prventa ?? 0,
         minStock: 5,
