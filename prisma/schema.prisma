@@ -18,6 +18,7 @@ model StockValorizado {
   sbtotal Int?
   prcosto Float?
   sbtot   Int?
+  fecha   DateTime?
 
   @@map("stockvalorizado")
 }

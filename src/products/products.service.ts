@@ -11,6 +11,7 @@ type ProductResponse = {
   prcosto: number;
   prventa: number;
   minStock: number;
+  fecha: string | null;
 };
 
 function normalizeCode(code: number | string | null | undefined) {
@@ -24,7 +25,7 @@ function normalizeCode(code: number | string | null | undefined) {
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async findAll(): Promise<ProductResponse[]> {
     const [stockRows, ventasRows] = await Promise.all([
@@ -51,6 +52,7 @@ export class ProductsService {
         prcosto: stock.prcosto ?? venta?.prcosto ?? 0,
         prventa: stock.prventa ?? 0,
         minStock: 5,
+        fecha: stock.fecha ? stock.fecha.toISOString() : null,
       };
     });
   }
