@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-type ProductResponse = {
+export type ProductResponse = {
   codigo: string;
   descrip: string;
   familia: string;

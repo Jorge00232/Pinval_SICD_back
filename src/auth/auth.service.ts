@@ -1,12 +1,13 @@
-import {
+﻿import {
   BadRequestException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import * as speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
+import * as speakeasy from 'speakeasy';
 
 export type UserRole = 'ADMIN' | 'STOCK' | 'VIEWER';
 
@@ -80,6 +81,15 @@ const users: AuthUser[] = [
     password: 'consulta123',
     twoFactorSecret: 'JBSWY3DPEHPK3PXR',
   },
+  {
+    id: '4',
+    username: 'conarce',
+    email: 'constanza.arce123@gmail.com',
+    name: 'Administrador SICD',
+    role: 'ADMIN',
+    password: 'ADMIN123',
+    twoFactorSecret: 'JBSWY3DPEHPK3PXR',
+  },
 ];
 
 const pendingChallenges = new Map<string, PendingChallenge>();
@@ -90,18 +100,19 @@ export class AuthService {
     process.env.GOOGLE_CLIENT_ID,
   );
 
-  login(credentials: LoginInput) {
+  constructor(private readonly jwtService: JwtService) {}
+
+  async login(credentials: LoginInput) {
     const username = credentials.username?.trim().toLowerCase();
     const password = credentials.password ?? '';
 
     const user = users.find(
       (item) =>
-        (item.username === username || item.email.toLowerCase() === username) &&
-        item.password === password,
+        item.username === username || item.email.toLowerCase() === username,
     );
 
-    if (!user) {
-      throw new UnauthorizedException('Usuario o contraseña incorrectos.');
+    if (!user || user.password !== password) {
+      throw new UnauthorizedException('Usuario o contrasena incorrectos.');
     }
 
     return this.createTwoFactorChallenge(user);
@@ -116,7 +127,7 @@ export class AuthService {
 
     if (!process.env.GOOGLE_CLIENT_ID) {
       throw new BadRequestException(
-        'GOOGLE_CLIENT_ID no está configurado en el backend.',
+        'GOOGLE_CLIENT_ID no esta configurado en el backend.',
       );
     }
 
@@ -159,7 +170,7 @@ export class AuthService {
 
       return this.createTwoFactorChallenge(user);
     } catch {
-      throw new UnauthorizedException('Token de Google no válido.');
+      throw new UnauthorizedException('Token de Google no valido.');
     }
   }
 
@@ -173,12 +184,12 @@ export class AuthService {
     const challenge = pendingChallenges.get(challengeId);
 
     if (!challenge) {
-      throw new UnauthorizedException('Desafío 2FA no encontrado.');
+      throw new UnauthorizedException('Desafio 2FA no encontrado.');
     }
 
     if (Date.now() > challenge.expiresAt) {
       pendingChallenges.delete(challengeId);
-      throw new UnauthorizedException('El desafío 2FA expiró.');
+      throw new UnauthorizedException('El desafio 2FA expiro.');
     }
 
     const user = users.find((item) => item.id === challenge.userId);
@@ -213,23 +224,23 @@ export class AuthService {
     };
   }
 
-  verifyTwoFactor(input: TwoFactorVerifyInput) {
+  async verifyTwoFactor(input: TwoFactorVerifyInput) {
     const challengeId = input.challengeId;
     const token = input.token?.trim();
 
     if (!challengeId || !token) {
-      throw new BadRequestException('Faltan datos de verificación 2FA.');
+      throw new BadRequestException('Faltan datos de verificacion 2FA.');
     }
 
     const challenge = pendingChallenges.get(challengeId);
 
     if (!challenge) {
-      throw new UnauthorizedException('Desafío 2FA no encontrado.');
+      throw new UnauthorizedException('Desafio 2FA no encontrado.');
     }
 
     if (Date.now() > challenge.expiresAt) {
       pendingChallenges.delete(challengeId);
-      throw new UnauthorizedException('El código 2FA expiró.');
+      throw new UnauthorizedException('El codigo 2FA expiro.');
     }
 
     const user = users.find((item) => item.id === challenge.userId);
@@ -247,13 +258,13 @@ export class AuthService {
     });
 
     if (!isValid) {
-      throw new UnauthorizedException('Código 2FA incorrecto.');
+      throw new UnauthorizedException('Codigo 2FA incorrecto.');
     }
 
     pendingChallenges.delete(challengeId);
 
     return {
-      accessToken: randomUUID(),
+      accessToken: await this.signAccessToken(user),
       user: this.toPublicUser(user),
     };
   }
@@ -274,6 +285,16 @@ export class AuthService {
     };
   }
 
+  private signAccessToken(user: AuthUser) {
+    return this.jwtService.signAsync({
+      sub: user.id,
+      username: user.username,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    });
+  }
+
   private toPublicUser(user: AuthUser): PublicUser {
     return {
       id: user.id,
@@ -284,3 +305,4 @@ export class AuthService {
     };
   }
 }
+
