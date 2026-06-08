@@ -10,21 +10,28 @@ datasource db {
 }
 
 model StockValorizado {
-  index   Int    @id @default(autoincrement())
-  codigo  Int?
-  descrip String?
-  stock   Int?
-  prventa Int?
-  sbtotal Int?
-  prcosto Float?
-  sbtot   Int?
-  fecha   DateTime?
+  index       Int       @id @default(autoincrement())
+  codigo      Int?
+  descrip     String?
+
+  // Nombre limpio para mostrar en el frontend
+  displayName String?
+
+  // Nombre normalizado para búsquedas y chatbot
+  searchName  String?
+
+  stock       Int?
+  prventa     Int?
+  sbtotal     Int?
+  prcosto     Float?
+  sbtot       Int?
+  fecha       DateTime?
 
   @@map("stockvalorizado")
 }
 
 model Ventas {
-  index    Int    @id @default(autoincrement())
+  index    Int     @id @default(autoincrement())
   codint   String?
   descrip  String?
   cantidad Int?
