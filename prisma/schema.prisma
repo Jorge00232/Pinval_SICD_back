@@ -68,6 +68,22 @@ model Ventas {
   @@map("ventas")
 }
 
+model InventoryMovement {
+  id          Int      @id @default(autoincrement())
+  codigo      String
+  productName String?
+  type        String
+  quantity    Int
+  unitPrice   Float?
+  totalPrice  Float?
+  stockAfter  Int?
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([codigo])
+  @@map("inventory_movements")
+}
+
 model ChatbotAudit {
   id           Int      @id @default(autoincrement())
   userId       String

@@ -3,7 +3,7 @@ import { VentasService } from './ventas.service';
 
 @Controller('ventas')
 export class VentasController {
-  constructor(private readonly ventasService: VentasService) { }
+  constructor(private readonly ventasService: VentasService) {}
 
   @Get()
   findAll() {

@@ -7,6 +7,7 @@ import { ProductsModule } from './products/products.module';
 import { StockModule } from './stock/stock.module';
 import { VentasModule } from './ventas/ventas.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
+import { InventoryMovementsModule } from './inventory-movements/inventory-movements.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     StockModule,
     VentasModule,
     ChatbotModule,
+    InventoryMovementsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

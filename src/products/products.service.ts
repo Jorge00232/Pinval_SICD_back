@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   toDisplayProductName,
@@ -20,6 +20,35 @@ export type ProductResponse = {
   fecha: string | null;
 };
 
+type ExistenceCardMovement = {
+  id: number;
+  fecha: string;
+  detalle: string;
+  entrada: number;
+  salida: number;
+  stockTotal: number | null;
+  precioUnitario: number | null;
+  total: number | null;
+};
+
+type ExistenceCardResponse = {
+  codigo: string;
+  descrip: string;
+  displayName: string;
+  searchName: string;
+  familia: string;
+  currentStock: number;
+  stockOriginal: number;
+  dataIssue: 'STOCK_NEGATIVO' | null;
+  totalEntradas: number;
+  totalSalidas: number;
+  prcosto: number;
+  prventa: number;
+  stockValueBySalePrice: number;
+  stockValueByCostPrice: number;
+  movements: ExistenceCardMovement[];
+};
+
 function normalizeCode(code: number | string | null | undefined) {
   if (code === null || code === undefined) {
     return '';
@@ -34,6 +63,10 @@ function resolveProductName(
   ventaName?: string | null,
 ) {
   return stockName?.trim() || ventaName?.trim() || '';
+}
+
+function normalizeMovementType(type: string | null | undefined) {
+  return String(type ?? '').trim().toUpperCase();
 }
 
 @Injectable()
@@ -78,6 +111,116 @@ export class ProductsService {
         fecha: stock.fecha ? stock.fecha.toISOString() : null,
       };
     });
+  }
+
+  async getExistenceCard(rawCodigo: string): Promise<ExistenceCardResponse> {
+    const codigo = normalizeCode(rawCodigo);
+
+    if (!codigo) {
+      throw new NotFoundException('Codigo de producto no valido.');
+    }
+
+    const codigoAsNumber = Number(codigo);
+
+    const [stock, venta, movements] = await Promise.all([
+      Number.isNaN(codigoAsNumber)
+        ? null
+        : this.prisma.stockValorizado.findFirst({
+            where: {
+              codigo: codigoAsNumber,
+            },
+          }),
+      this.prisma.ventas.findFirst({
+        where: {
+          codint: codigo,
+        },
+      }),
+      this.prisma.inventoryMovement.findMany({
+        where: {
+          codigo,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      }),
+    ]);
+
+    if (!stock && !venta) {
+      throw new NotFoundException(
+        `No se encontro informacion para el producto ${codigo}.`,
+      );
+    }
+
+    const stockOriginal = stock?.stock ?? venta?.stock ?? 0;
+    const currentStock = Math.max(stockOriginal, 0);
+    const originalName = resolveProductName(stock?.descrip, venta?.descrip);
+
+    const displayName =
+      stock?.displayName?.trim() || toDisplayProductName(originalName);
+
+    const searchName =
+      stock?.searchName?.trim() || toSearchProductName(originalName);
+
+    const prcosto = stock?.prcosto ?? venta?.prcosto ?? 0;
+    const prventa = stock?.prventa ?? 0;
+
+    let runningStock = 0;
+
+    const cardMovements: ExistenceCardMovement[] = movements.map((movement) => {
+      const movementType = normalizeMovementType(movement.type);
+      const quantity = movement.quantity ?? 0;
+
+      const entrada = movementType === 'ENTRADA' ? quantity : 0;
+      const salida = movementType === 'SALIDA' ? quantity : 0;
+
+      runningStock += entrada;
+      runningStock -= salida;
+
+      const stockTotal = movement.stockAfter ?? runningStock;
+      const precioUnitario = movement.unitPrice ?? null;
+      const total =
+        movement.totalPrice ??
+        (precioUnitario !== null ? quantity * precioUnitario : null);
+
+      return {
+        id: movement.id,
+        fecha: movement.createdAt.toISOString(),
+        detalle: movement.reason?.trim() || movementType || 'MOVIMIENTO',
+        entrada,
+        salida,
+        stockTotal,
+        precioUnitario,
+        total,
+      };
+    });
+
+    const totalEntradas = cardMovements.reduce(
+      (sum, movement) => sum + movement.entrada,
+      0,
+    );
+
+    const totalSalidas = cardMovements.reduce(
+      (sum, movement) => sum + movement.salida,
+      0,
+    );
+
+    return {
+      codigo,
+      descrip: originalName,
+      displayName,
+      searchName,
+      familia: venta?.familia?.trim() || 'NO TIENE',
+      currentStock,
+      stockOriginal,
+      dataIssue: stockOriginal < 0 ? 'STOCK_NEGATIVO' : null,
+      totalEntradas,
+      totalSalidas,
+      prcosto,
+      prventa,
+      stockValueBySalePrice: currentStock * prventa,
+      stockValueByCostPrice: currentStock * prcosto,
+      movements: cardMovements,
+    };
   }
 
   async normalizeExistingProductNames() {
