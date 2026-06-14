@@ -40,6 +40,15 @@ function toNullableNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toNullableText(value: unknown) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const text = String(value).trim();
+  return text || null;
+}
+
 function parseCreatedAt(value: string | null | undefined) {
   if (!value) {
     return undefined;
@@ -149,6 +158,11 @@ export class InventoryMovementsService {
             totalPrice,
             stockAfter: calculatedStock,
             reason: item.reason?.trim() || null,
+
+            // Auditoría del movimiento
+            user: toNullableText(item.user),
+            detail: toNullableText(item.detail),
+
             createdAt: parseCreatedAt(item.createdAt),
           },
         });

@@ -10,6 +10,8 @@ export type CreateInventoryMovementBody = {
   totalPrice?: number | null;
   stockAfter?: number | null;
   reason?: string | null;
+  user?: string | null;
+  detail?: string | null;
   createdAt?: string | null;
 };
 
