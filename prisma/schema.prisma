@@ -70,17 +70,42 @@ model Ventas {
 
 model InventoryMovement {
   id          Int      @id @default(autoincrement())
+
+  // Código del producto afectado
   codigo      String
+
+  // Nombre del producto al momento del movimiento
   productName String?
+
+  // Tipo de movimiento: ENTRADA, SALIDA, AJUSTE
   type        String
+
+  // Cantidad movida
   quantity    Int
+
+  // Precio unitario usado en el movimiento
   unitPrice   Float?
+
+  // Total del movimiento
   totalPrice  Float?
+
+  // Stock resultante después del movimiento
   stockAfter  Int?
+
+  // Motivo o explicación del movimiento
   reason      String?
+
+  // Usuario que ejecutó el movimiento
+  user        String?
+
+  // Detalle libre del movimiento
+  detail      String?
+
   createdAt   DateTime @default(now())
 
   @@index([codigo])
+  @@index([type])
+  @@index([createdAt])
   @@map("inventory_movements")
 }
 

@@ -8,6 +8,7 @@ import { StockModule } from './stock/stock.module';
 import { VentasModule } from './ventas/ventas.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { InventoryMovementsModule } from './inventory-movements/inventory-movements.module';
+import { SidebarModule } from './sidebar/sidebar.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { InventoryMovementsModule } from './inventory-movements/inventory-moveme
     VentasModule,
     ChatbotModule,
     InventoryMovementsModule,
+    SidebarModule,
   ],
   controllers: [AppController],
   providers: [AppService],
