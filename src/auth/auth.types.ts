@@ -3,6 +3,7 @@ export type UserRole = 'ADMIN' | 'STOCK' | 'VIEWER';
 export type AuthenticatedUser = {
   id: string;
   username: string;
+  email?: string;
   name: string;
   role: UserRole;
 };
@@ -10,6 +11,7 @@ export type AuthenticatedUser = {
 export type JwtPayload = {
   sub: string;
   username: string;
+  email?: string;
   name: string;
   role: UserRole;
 };

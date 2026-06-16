@@ -8,43 +8,50 @@ export class SidebarService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getSummary() {
-    const [totalMovements, activeAlerts, negativeStockAlerts, noStockAlerts] =
-      await Promise.all([
-        this.prisma.inventoryMovement.count(),
+    const [
+      totalMovements,
+      negativeStockAlerts,
+      noStockAlerts,
+      minStockAlert,
+    ] = await Promise.all([
+      this.prisma.inventoryMovement.count(),
 
-        this.prisma.stockValorizado.count({
-          where: {
-            OR: [
-              { stock: null },
-              { stock: { lte: MIN_STOCK_ALERT } },
-            ],
+      this.prisma.stockValorizado.count({
+        where: {
+          stock: {
+            lt: 0,
           },
-        }),
+        },
+      }),
 
-        this.prisma.stockValorizado.count({
-          where: {
-            stock: {
-              lt: 0,
-            },
-          },
-        }),
+      this.prisma.stockValorizado.count({
+        where: {
+          OR: [
+            { stock: null },
+            { stock: 0 },
+          ],
+        },
+      }),
 
-        this.prisma.stockValorizado.count({
-          where: {
-            OR: [
-              { stock: null },
-              { stock: 0 },
-            ],
+      this.prisma.stockValorizado.count({
+        where: {
+          stock: {
+            gt: 0,
+            lte: MIN_STOCK_ALERT,
           },
-        }),
-      ]);
+        },
+      }),
+    ]);
+
+    const activeAlerts =
+      negativeStockAlerts + noStockAlerts + minStockAlert;
 
     return {
       totalMovements,
       activeAlerts,
       negativeStockAlerts,
       noStockAlerts,
-      minStockAlert: MIN_STOCK_ALERT,
+      minStockAlert,
     };
   }
 }

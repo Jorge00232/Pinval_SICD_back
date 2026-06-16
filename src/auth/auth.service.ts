@@ -8,8 +8,9 @@ import { randomUUID } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import QRCode from 'qrcode';
 import * as speakeasy from 'speakeasy';
-
-export type UserRole = 'ADMIN' | 'STOCK' | 'VIEWER';
+import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../prisma/prisma.service';
+import type { UserRole } from './auth.types';
 
 type LoginInput = {
   username?: string;
@@ -29,14 +30,16 @@ type TwoFactorVerifyInput = {
   token?: string;
 };
 
-type AuthUser = {
+type AuthDbUser = {
   id: string;
-  username: string;
+  username: string | null;
   email: string;
   name: string;
-  role: UserRole;
-  password: string;
-  twoFactorSecret: string;
+  role: string;
+  passwordHash: string | null;
+  twoFactorSecret: string | null;
+  isActive: boolean;
+  allowGoogle: boolean;
 };
 
 type PublicUser = {
@@ -53,44 +56,7 @@ type PendingChallenge = {
   expiresAt: number;
 };
 
-const users: AuthUser[] = [
-  {
-    id: '1',
-    username: 'admin',
-    email: 'jorg.manriquez@duocuc.cl',
-    name: 'Administrador SICD',
-    role: 'ADMIN',
-    password: 'admin123',
-    twoFactorSecret: 'JBSWY3DPEHPK3PXP',
-  },
-  {
-    id: '2',
-    username: 'inventario',
-    email: 'stock@pinval.cl',
-    name: 'Encargado de inventario',
-    role: 'STOCK',
-    password: 'stock123',
-    twoFactorSecret: 'JBSWY3DPEHPK3PXQ',
-  },
-  {
-    id: '3',
-    username: 'consulta',
-    email: 'consulta@pinval.cl',
-    name: 'Usuario de consulta',
-    role: 'VIEWER',
-    password: 'consulta123',
-    twoFactorSecret: 'JBSWY3DPEHPK3PXR',
-  },
-  {
-    id: '4',
-    username: 'conarce',
-    email: 'constanza.arce123@gmail.com',
-    name: 'Administrador SICD',
-    role: 'ADMIN',
-    password: 'ADMIN123',
-    twoFactorSecret: 'JBSWY3DPEHPK3PXR',
-  },
-];
+const TWO_FACTOR_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
 const pendingChallenges = new Map<string, PendingChallenge>();
 
@@ -100,19 +66,29 @@ export class AuthService {
     process.env.GOOGLE_CLIENT_ID,
   );
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async login(credentials: LoginInput) {
-    const username = credentials.username?.trim().toLowerCase();
+    const usernameOrEmail = this.normalizeText(credentials.username);
     const password = credentials.password ?? '';
 
-    const user = users.find(
-      (item) =>
-        item.username === username || item.email.toLowerCase() === username,
-    );
+    if (!usernameOrEmail || !password) {
+      throw new UnauthorizedException('Usuario o contraseña incorrectos.');
+    }
 
-    if (!user || user.password !== password) {
-      throw new UnauthorizedException('Usuario o contrasena incorrectos.');
+    const user = await this.findActiveUserByUsernameOrEmail(usernameOrEmail);
+
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('Usuario o contraseña incorrectos.');
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+    if (!passwordMatches) {
+      throw new UnauthorizedException('Usuario o contraseña incorrectos.');
     }
 
     return this.createTwoFactorChallenge(user);
@@ -127,9 +103,11 @@ export class AuthService {
 
     if (!process.env.GOOGLE_CLIENT_ID) {
       throw new BadRequestException(
-        'GOOGLE_CLIENT_ID no esta configurado en el backend.',
+        'GOOGLE_CLIENT_ID no está configurado en el backend.',
       );
     }
+
+    let email = '';
 
     try {
       const ticket = await this.googleClient.verifyIdToken({
@@ -139,39 +117,41 @@ export class AuthService {
 
       const payload = ticket.getPayload();
 
-      const email = payload?.email?.toLowerCase();
-      const name = payload?.name ?? 'Usuario Google';
+      email = this.normalizeText(payload?.email);
 
       if (!email) {
         throw new UnauthorizedException('La cuenta de Google no tiene email.');
       }
 
-      let user = users.find((item) => item.email.toLowerCase() === email);
-
-      if (!user) {
-        const generatedSecret = speakeasy.generateSecret({
-          name: `Pinval SICD (${email})`,
-          issuer: 'Pinval SICD',
-          length: 20,
-        });
-
-        user = {
-          id: randomUUID(),
-          username: email.split('@')[0],
-          email,
-          name,
-          role: 'VIEWER',
-          password: '',
-          twoFactorSecret: generatedSecret.base32,
-        };
-
-        users.push(user);
+      if (payload?.email_verified !== true) {
+        throw new UnauthorizedException(
+          'La cuenta de Google no tiene el correo verificado.',
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
       }
 
-      return this.createTwoFactorChallenge(user);
-    } catch {
-      throw new UnauthorizedException('Token de Google no valido.');
+      throw new UnauthorizedException('Token de Google no válido.');
     }
+
+    const user = await this.prisma.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (!user || user.isActive === false || user.allowGoogle === false) {
+      throw new UnauthorizedException(
+        'Tu cuenta Google no está autorizada para acceder a SICD.',
+      );
+    }
+
+    return this.createTwoFactorChallenge(user);
   }
 
   async setupTwoFactor(input: TwoFactorSetupInput) {
@@ -184,32 +164,25 @@ export class AuthService {
     const challenge = pendingChallenges.get(challengeId);
 
     if (!challenge) {
-      throw new UnauthorizedException('Desafio 2FA no encontrado.');
+      throw new UnauthorizedException('Desafío 2FA no encontrado.');
     }
 
     if (Date.now() > challenge.expiresAt) {
       pendingChallenges.delete(challengeId);
-      throw new UnauthorizedException('El desafio 2FA expiro.');
+      throw new UnauthorizedException('El desafío 2FA expiró.');
     }
 
-    const user = users.find((item) => item.id === challenge.userId);
+    const user = await this.findActiveUserById(challenge.userId);
 
     if (!user) {
+      pendingChallenges.delete(challengeId);
       throw new UnauthorizedException('Usuario no encontrado.');
     }
 
-    if (!user.twoFactorSecret) {
-      const generatedSecret = speakeasy.generateSecret({
-        name: `Pinval SICD (${user.email})`,
-        issuer: 'Pinval SICD',
-        length: 20,
-      });
-
-      user.twoFactorSecret = generatedSecret.base32;
-    }
+    const twoFactorSecret = await this.ensureTwoFactorSecret(user);
 
     const otpauthUrl = speakeasy.otpauthURL({
-      secret: user.twoFactorSecret,
+      secret: twoFactorSecret,
       label: user.email,
       issuer: 'Pinval SICD',
       encoding: 'base32',
@@ -220,7 +193,7 @@ export class AuthService {
     return {
       qrDataUrl,
       otpauthUrl,
-      secret: user.twoFactorSecret,
+      secret: twoFactorSecret,
     };
   }
 
@@ -229,36 +202,49 @@ export class AuthService {
     const token = input.token?.trim();
 
     if (!challengeId || !token) {
-      throw new BadRequestException('Faltan datos de verificacion 2FA.');
+      throw new BadRequestException('Faltan datos de verificación 2FA.');
+    }
+
+    if (!/^\d{6}$/.test(token)) {
+      throw new BadRequestException('El código 2FA debe tener 6 dígitos.');
     }
 
     const challenge = pendingChallenges.get(challengeId);
 
     if (!challenge) {
-      throw new UnauthorizedException('Desafio 2FA no encontrado.');
+      throw new UnauthorizedException('Desafío 2FA no encontrado.');
     }
 
     if (Date.now() > challenge.expiresAt) {
       pendingChallenges.delete(challengeId);
-      throw new UnauthorizedException('El codigo 2FA expiro.');
+      throw new UnauthorizedException('El código 2FA expiró.');
     }
 
-    const user = users.find((item) => item.id === challenge.userId);
+    const user = await this.findActiveUserById(challenge.userId);
 
     if (!user) {
       pendingChallenges.delete(challengeId);
       throw new UnauthorizedException('Usuario no encontrado.');
     }
 
+    const twoFactorSecret = user.twoFactorSecret;
+
+    if (!twoFactorSecret) {
+      pendingChallenges.delete(challengeId);
+      throw new UnauthorizedException(
+        'El usuario no tiene 2FA configurado.',
+      );
+    }
+
     const isValid = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
+      secret: twoFactorSecret,
       encoding: 'base32',
       token,
-      window: 1,
+      window: 2,
     });
 
     if (!isValid) {
-      throw new UnauthorizedException('Codigo 2FA incorrecto.');
+      throw new UnauthorizedException('Código 2FA incorrecto.');
     }
 
     pendingChallenges.delete(challengeId);
@@ -269,13 +255,79 @@ export class AuthService {
     };
   }
 
-  private createTwoFactorChallenge(user: AuthUser) {
+  private async ensureTwoFactorSecret(user: AuthDbUser) {
+    if (user.twoFactorSecret) {
+      return user.twoFactorSecret;
+    }
+
+    const generatedSecret = speakeasy.generateSecret({
+      name: `Pinval SICD (${user.email})`,
+      issuer: 'Pinval SICD',
+      length: 20,
+    });
+
+    await this.prisma.user.updateMany({
+      where: {
+        id: user.id,
+        twoFactorSecret: null,
+        isActive: true,
+      },
+      data: {
+        twoFactorSecret: generatedSecret.base32,
+      },
+    });
+
+    const updatedUser = await this.findActiveUserById(user.id);
+
+    if (!updatedUser?.twoFactorSecret) {
+      pendingChallenges.forEach((challenge, challengeId) => {
+        if (challenge.userId === user.id) {
+          pendingChallenges.delete(challengeId);
+        }
+      });
+
+      throw new BadRequestException('No se pudo configurar 2FA.');
+    }
+
+    return updatedUser.twoFactorSecret;
+  }
+
+  private async findActiveUserByUsernameOrEmail(
+    usernameOrEmail: string,
+  ): Promise<AuthDbUser | null> {
+    return this.prisma.user.findFirst({
+      where: {
+        isActive: true,
+        OR: [
+          {
+            username: usernameOrEmail,
+          },
+          {
+            email: usernameOrEmail,
+          },
+        ],
+      },
+    });
+  }
+
+  private async findActiveUserById(
+    userId: string,
+  ): Promise<AuthDbUser | null> {
+    return this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        isActive: true,
+      },
+    });
+  }
+
+  private createTwoFactorChallenge(user: AuthDbUser) {
     const challengeId = randomUUID();
 
     pendingChallenges.set(challengeId, {
       id: challengeId,
       userId: user.id,
-      expiresAt: Date.now() + 5 * 60 * 1000,
+      expiresAt: Date.now() + TWO_FACTOR_CHALLENGE_TTL_MS,
     });
 
     return {
@@ -285,24 +337,47 @@ export class AuthService {
     };
   }
 
-  private signAccessToken(user: AuthUser) {
+  private signAccessToken(user: AuthDbUser) {
+    const role = this.toUserRole(user.role);
+
     return this.jwtService.signAsync({
       sub: user.id,
-      username: user.username,
+      username: this.getUsername(user),
       email: user.email,
       name: user.name,
-      role: user.role,
+      role,
     });
   }
 
-  private toPublicUser(user: AuthUser): PublicUser {
+  private toPublicUser(user: AuthDbUser): PublicUser {
     return {
       id: user.id,
-      username: user.username,
+      username: this.getUsername(user),
       email: user.email,
       name: user.name,
-      role: user.role,
+      role: this.toUserRole(user.role),
     };
   }
-}
 
+  private toUserRole(role: string): UserRole {
+    if (role === 'ADMIN' || role === 'STOCK' || role === 'VIEWER') {
+      return role;
+    }
+
+    throw new UnauthorizedException('El usuario tiene un rol no válido.');
+  }
+
+  private getUsername(user: AuthDbUser) {
+    const username = user.username?.trim();
+
+    if (username) {
+      return username;
+    }
+
+    return user.email.split('@')[0] || user.email;
+  }
+
+  private normalizeText(value?: string | null) {
+    return value?.trim().toLowerCase() ?? '';
+  }
+}
