@@ -39,8 +39,8 @@ export class AiIntentService {
       'Formato: {"intent":"GENERAL"} o {"intent":"PRODUCT_SEARCH","searchTerm":"nombre o codigo"}. ' +
       'Intenciones permitidas: INVENTORY_SUMMARY, ADJUSTMENTS, OUT_OF_STOCK, LOW_STOCK, LOWEST_STOCK, ' +
       'HIGHEST_STOCK, PRODUCT_SEARCH, GENERAL, UNKNOWN. ' +
-      'Usa GENERAL para saludos, preguntas generales, ayuda, conversación normal o cuando no sea una consulta de inventario. ' +
-      'PRODUCT_SEARCH requiere searchTerm con solo el código o nombre del producto.';
+      'Usa GENERAL para saludos, ayuda o preguntas conceptuales sobre productos de inventario, por ejemplo qué es el cloro o para qué sirve un detergente. ' +
+      'Usa UNKNOWN para temas externos al negocio. PRODUCT_SEARCH requiere searchTerm con solo el código o nombre del producto.';
 
     const content = await this.callCloudflare([
       {
@@ -78,7 +78,7 @@ export class AiIntentService {
         role: 'system',
         content:
           'Eres el Asistente SICD de Pinval. Responde en español, de forma breve y útil. ' +
-          'Puedes explicar que ayudas a consultar inventario, stock, productos bajo mínimo, productos sin stock, rankings y resumen de inventario. ' +
+          'Puedes explicar que ayudas a consultar inventario, stock, productos bajo mínimo, productos sin stock, rankings, resumen de inventario y conceptos básicos de productos de limpieza o consumo registrados en inventario. ' +
           'No inventes datos de inventario. Si el usuario pide datos específicos, sugiere preguntar por producto, stock, bajo mínimo, sin stock o resumen.',
       },
       {

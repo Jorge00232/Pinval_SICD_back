@@ -140,6 +140,15 @@ describe('ChatbotService', () => {
     ]);
   });
 
+
+  it('answers basic product information questions without blocking them', async () => {
+    const response = await service.answerMessage('que es el cloro?');
+
+    expect(response.type).toBe('GENERAL');
+    expect(response.answer).toContain('El cloro');
+    expect(response.answer).not.toContain('Lo siento, no puedo responder eso');
+  });
+
   it('sanitizes personal data before recording an audit', async () => {
     await service.recordAudit(
       'consulta para 12.345.678-5 y persona@ejemplo.cl',

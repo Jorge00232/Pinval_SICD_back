@@ -30,6 +30,7 @@ type LocalIntent =
       direction: 'LOWEST' | 'HIGHEST';
     }
   | { intent: 'PRODUCT_SEARCH'; searchTerm: string }
+  | { intent: 'PRODUCT_INFORMATION'; searchTerm: string }
   | { intent: 'UNKNOWN' };
 
 function normalizeText(value: string) {
@@ -117,9 +118,10 @@ export class ChatbotService {
       mode: 'inventory-assistant',
       capabilities: [
         'saludar y orientar al usuario',
-        'buscar producto por codigo o nombre',
+        'buscar producto por código o nombre',
         'consultar stock de un producto',
-        'productos bajo minimo',
+        'explicar conceptos básicos de productos de inventario',
+        'productos bajo mínimo',
         'productos sin stock',
         'productos con menor stock',
         'productos con mayor stock',
@@ -137,7 +139,7 @@ export class ChatbotService {
       return {
         type: 'GENERAL',
         answer:
-          'Hola. Soy el Asistente SICD. Puedo ayudarte solo con consultas de inventario: stock, productos, productos bajo mínimo, productos sin stock, ajustes y resumen de inventario.',
+          'Hola. Soy el Asistente SICD. Puedo ayudarte con consultas de inventario, stock, productos, bajo mínimo, productos sin stock, ajustes, resumen y conceptos básicos de productos como cloro o detergente.',
       };
     }
 
@@ -145,7 +147,7 @@ export class ChatbotService {
       return {
         type: 'GENERAL',
         answer:
-          'Puedes preguntarme cosas como: "resumen de inventario", "productos bajo mínimo", "productos sin stock", "productos con menos stock", "cuántos cloros hay en stock" o "cuál es el shampoo con menos stock".',
+          'Puedes preguntarme cosas como: "resumen de inventario", "productos bajo mínimo", "productos sin stock", "productos con menos stock", "cuántos cloros hay en stock", "qué es el cloro" o "para qué sirve el detergente".',
       };
     }
 
@@ -198,6 +200,13 @@ export class ChatbotService {
 
       case 'PRODUCT_SEARCH':
         return this.searchProduct(products, message, localIntent.searchTerm);
+
+      case 'PRODUCT_INFORMATION':
+        return this.buildProductInformationResponse(
+          products,
+          message,
+          localIntent.searchTerm,
+        );
 
       case 'PRODUCT_SCOPED_RANKING':
         return this.buildProductScopedStockRanking(
@@ -284,6 +293,15 @@ export class ChatbotService {
       return { intent: 'OUT_OF_SCOPE' };
     }
 
+    const productInformationTerm = this.extractProductInformationTerm(message);
+
+    if (productInformationTerm) {
+      return {
+        intent: 'PRODUCT_INFORMATION',
+        searchTerm: productInformationTerm,
+      };
+    }
+
     if (!this.isInventoryDomainMessage(message)) {
       return { intent: 'OUT_OF_SCOPE' };
     }
@@ -347,7 +365,7 @@ export class ChatbotService {
     return {
       type: 'GENERAL',
       answer:
-        'Lo siento, no puedo responder eso. Solo puedo ayudarte con consultas relacionadas al inventario SICD: stock, productos, productos bajo mínimo, productos sin stock, ajustes y resumen de inventario.',
+        'Lo siento, no puedo responder eso. Puedo ayudarte con consultas relacionadas al inventario SICD: stock, productos, bajo mínimo, productos sin stock, ajustes, resumen de inventario y conceptos básicos de productos registrados o usados en inventario.',
     };
   }
 
@@ -405,6 +423,8 @@ export class ChatbotService {
       'stock',
       'producto',
       'productos',
+      'articulo',
+      'articulos',
       'codigo',
       'unidades',
       'unidad',
@@ -431,9 +451,158 @@ export class ChatbotService {
       'menos',
       'mas',
       'reponer',
+      'acabarse',
+      'acabar',
+      'terminarse',
+      'terminar',
+      'cloro',
+      'detergente',
+      'desinfectante',
+      'limpiador',
+      'limpieza',
+      'shampoo',
+      'jabon',
+      'lavalozas',
+      'insecticida',
+      'virutilla',
+      'fibra',
+      'escoba',
+      'papel',
+      'cera',
     ];
 
     return this.hasAny(message, domainWords);
+  }
+
+
+  private extractProductInformationTerm(message: string) {
+    const informationTriggers = [
+      'que es',
+      'que son',
+      'que significa',
+      'definicion de',
+      'para que sirve',
+      'para que se usa',
+      'uso de',
+      'usos de',
+      'explica',
+      'explicame',
+      'informacion de',
+      'informacion sobre',
+    ];
+
+    if (!this.hasAny(message, informationTriggers)) {
+      return null;
+    }
+
+    const searchTerm = this.removeStopWords(message, [
+      'que',
+      'es',
+      'son',
+      'significa',
+      'definicion',
+      'de',
+      'del',
+      'la',
+      'el',
+      'los',
+      'las',
+      'un',
+      'una',
+      'unos',
+      'unas',
+      'para',
+      'sirve',
+      'se',
+      'usa',
+      'uso',
+      'usos',
+      'explica',
+      'explicame',
+      'informacion',
+      'sobre',
+      'producto',
+      'productos',
+      'articulo',
+      'articulos',
+      'inventario',
+      'sicd',
+      'pinval',
+      'por',
+      'favor',
+    ]);
+
+    const genericTerms = [
+      'producto',
+      'productos',
+      'articulo',
+      'articulos',
+      'inventario',
+      'stock',
+      'cosa',
+      'cosas',
+    ];
+
+    if (!searchTerm || searchTerm.length < 3 || genericTerms.includes(searchTerm)) {
+      return null;
+    }
+
+    return searchTerm;
+  }
+
+  private getKnownProductInformation(searchTerm: string) {
+    const term = normalizeText(searchTerm);
+    const catalog: Array<{ keys: string[]; answer: string }> = [
+      {
+        keys: ['cloro', 'hipoclorito'],
+        answer:
+          'El cloro es un producto químico usado principalmente como desinfectante y limpiador. En inventario suele asociarse a productos de limpieza para baños, pisos, superficies y desinfección general. Debe manipularse con cuidado y no mezclarse con amoníaco, ácidos u otros químicos.',
+      },
+      {
+        keys: ['detergente', 'detergentes'],
+        answer:
+          'El detergente es un producto de limpieza diseñado para remover grasa, suciedad y residuos. En un inventario puede aparecer asociado a lavado de ropa, limpieza general, cocina o superficies.',
+      },
+      {
+        keys: ['desinfectante', 'desinfectantes'],
+        answer:
+          'Un desinfectante es un producto utilizado para reducir o eliminar microorganismos en superficies. En SICD puede servir para controlar productos destinados a higiene, limpieza y sanitización.',
+      },
+      {
+        keys: ['shampoo', 'champu'],
+        answer:
+          'El shampoo es un producto de higiene usado para lavar el cabello o, según el tipo de producto, para limpieza especializada. En inventario se controla por stock, categoría, precio y proveedor.',
+      },
+      {
+        keys: ['jabon', 'jabones'],
+        answer:
+          'El jabón es un producto de higiene o limpieza usado para remover suciedad y grasa. En inventario puede registrarse por unidades, formato, proveedor y stock mínimo.',
+      },
+      {
+        keys: ['lavalozas', 'lavavajillas'],
+        answer:
+          'El lavalozas es un producto de limpieza usado para lavar utensilios de cocina y remover grasa. En inventario se puede controlar por stock disponible, proveedor y reposición.',
+      },
+      {
+        keys: ['virutilla', 'fibra', 'esponja'],
+        answer:
+          'La virutilla, fibra o esponja es un insumo de limpieza usado para remover suciedad adherida en superficies o utensilios. En inventario se controla como producto de consumo frecuente.',
+      },
+      {
+        keys: ['limpiavidrios', 'limpia vidrios'],
+        answer:
+          'El limpiavidrios es un producto usado para limpiar cristales, espejos y superficies similares. En inventario se puede controlar por unidades, formato, proveedor y stock disponible.',
+      },
+      {
+        keys: ['insecticida', 'baygon'],
+        answer:
+          'Un insecticida es un producto destinado al control de insectos. Debe almacenarse y manipularse con precaución, siguiendo las indicaciones del fabricante.',
+      },
+    ];
+
+    return catalog.find((entry) =>
+      entry.keys.some((key) => term.includes(key) || key.includes(term)),
+    )?.answer;
   }
 
   private isInventorySummaryIntent(message: string) {
@@ -703,6 +872,73 @@ export class ChatbotService {
     return cleaned.length >= 3;
   }
 
+
+  private buildProductInformationResponse(
+    products: ProductResponse[],
+    originalMessage: string,
+    searchTerm: string,
+  ): ChatbotResponse {
+    const knownInformation = this.getKnownProductInformation(searchTerm);
+    const searchVariants = this.buildSearchVariants(searchTerm);
+
+    const matchedProducts = products.filter((product) => {
+      const productCode = normalizeText(product.codigo);
+      const productDescription = normalizeText(product.descrip);
+      const productDisplayName = normalizeText(product.displayName ?? '');
+      const productSearchName = normalizeText(product.searchName ?? '');
+      const productFamily = normalizeText(product.familia ?? '');
+
+      return searchVariants.some(
+        (term) =>
+          productCode.includes(term) ||
+          productDescription.includes(term) ||
+          productDisplayName.includes(term) ||
+          productSearchName.includes(term) ||
+          productFamily.includes(term),
+      );
+    });
+
+    const visibleProducts = matchedProducts
+      .slice(0, MAX_LIST_RESULTS)
+      .map(toChatbotProduct);
+
+    const totalUnits = matchedProducts.reduce(
+      (total, product) => total + product.stock,
+      0,
+    );
+
+    if (knownInformation) {
+      const inventoryDetail = matchedProducts.length
+        ? ` Además, encontré ${matchedProducts.length} producto${
+            matchedProducts.length === 1 ? '' : 's'
+          } relacionado${matchedProducts.length === 1 ? '' : 's'} con "${searchTerm}" en el inventario, con ${totalUnits} unidades disponibles en total.`
+        : ` No encontré productos relacionados con "${searchTerm}" registrados actualmente en el inventario.`;
+
+      return {
+        type: matchedProducts.length ? 'PRODUCT_LIST' : 'GENERAL',
+        answer: `${knownInformation}${inventoryDetail}`,
+        products: visibleProducts,
+        totalResults: matchedProducts.length,
+      };
+    }
+
+    if (matchedProducts.length > 0) {
+      return {
+        type: 'PRODUCT_LIST',
+        answer: `"${searchTerm}" aparece asociado a ${matchedProducts.length} producto${
+          matchedProducts.length === 1 ? '' : 's'
+        } del inventario SICD, con ${totalUnits} unidades disponibles en total. Puedo ayudarte a revisar su stock, productos similares o estado de reposición.`,
+        products: visibleProducts,
+        totalResults: matchedProducts.length,
+      };
+    }
+
+    return {
+      type: 'GENERAL',
+      answer: `No tengo una definición segura para "${searchTerm}" dentro del contexto del inventario SICD y tampoco encontré productos asociados. Intenta buscarlo por nombre de producto, código o categoría.`,
+    };
+  }
+
   private buildProductList(
     products: ProductResponse[],
     description: { singular: string; plural: string },
@@ -772,11 +1008,17 @@ export class ChatbotService {
     const matchedProducts = products.filter((product) => {
       const productCode = normalizeText(product.codigo);
       const productDescription = normalizeText(product.descrip);
+      const productDisplayName = normalizeText(product.displayName ?? '');
+      const productSearchName = normalizeText(product.searchName ?? '');
+      const productFamily = normalizeText(product.familia ?? '');
 
       return searchVariants.some(
         (term) =>
           productCode.includes(term) ||
           productDescription.includes(term) ||
+          productDisplayName.includes(term) ||
+          productSearchName.includes(term) ||
+          productFamily.includes(term) ||
           term.includes(productDescription),
       );
     });
@@ -974,7 +1216,7 @@ export class ChatbotService {
 
     if (!searchTerm) {
       throw new BadRequestException(
-        'Indica el codigo o nombre del producto que deseas consultar.',
+        'Indica el código o nombre del producto que deseas consultar.',
       );
     }
 
@@ -999,11 +1241,17 @@ export class ChatbotService {
     const matchedProducts = products.filter((product) => {
       const productCode = normalizeText(product.codigo);
       const productDescription = normalizeText(product.descrip);
+      const productDisplayName = normalizeText(product.displayName ?? '');
+      const productSearchName = normalizeText(product.searchName ?? '');
+      const productFamily = normalizeText(product.familia ?? '');
 
       return searchVariants.some(
         (term) =>
           productCode.includes(term) ||
           productDescription.includes(term) ||
+          productDisplayName.includes(term) ||
+          productSearchName.includes(term) ||
+          productFamily.includes(term) ||
           term.includes(productDescription),
       );
     });
