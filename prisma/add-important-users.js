@@ -48,8 +48,8 @@ async function main() {
     email: 'josu.campusano@duocuc.cl',
     username: 'jo.campusano',
     name: 'Josue Campusano',
-    role: 'VIEWER',
-    password: 'viewer123',
+    role: 'STOCK',
+    password: 'stock123',
   });
 
   await upsertUser({
