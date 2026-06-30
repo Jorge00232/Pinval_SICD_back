@@ -3,7 +3,7 @@ import type { InventoryMovement } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateInventoryMovementBody } from './inventory-movements.controller';
 
-type MovementType = 'ENTRADA' | 'SALIDA' | 'AJUSTE';
+type MovementType = string;
 
 function normalizeCode(code: number | string | null | undefined) {
   if (code === null || code === undefined) {
@@ -15,15 +15,13 @@ function normalizeCode(code: number | string | null | undefined) {
 }
 
 function normalizeType(type: unknown): MovementType {
-  const value = String(type ?? '').trim().toUpperCase();
+  const value = String(type ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
 
-  if (value === 'ENTRADA' || value === 'SALIDA' || value === 'AJUSTE') {
-    return value;
+  if (!value) {
+    throw new BadRequestException('El tipo de movimiento es obligatorio.');
   }
 
-  throw new BadRequestException(
-    'Tipo de movimiento invalido. Use ENTRADA, SALIDA o AJUSTE.',
-  );
+  return value;
 }
 
 function toNumber(value: unknown, fallback = 0) {
@@ -93,28 +91,31 @@ export class InventoryMovementsService {
         const codigoAsNumber = Number(codigo);
         const type = normalizeType(item.type);
         const quantity = toNumber(item.quantity);
+        const isInventoryOperation = ['ENTRADA', 'SALIDA', 'AJUSTE'].includes(type);
 
         if (!codigo) {
-          throw new BadRequestException('El codigo del producto es obligatorio.');
+          throw new BadRequestException('El código del movimiento es obligatorio.');
         }
 
         if (quantity <= 0) {
           throw new BadRequestException('La cantidad debe ser mayor a 0.');
         }
 
-        if (Number.isNaN(codigoAsNumber)) {
-          throw new BadRequestException('El codigo del producto debe ser numerico.');
+        if (isInventoryOperation && Number.isNaN(codigoAsNumber)) {
+          throw new BadRequestException('El código del producto debe ser numérico.');
         }
 
-        const product = await tx.stockValorizado.findFirst({
-          where: {
-            codigo: codigoAsNumber,
-          },
-        });
+        const product = Number.isNaN(codigoAsNumber)
+          ? null
+          : await tx.stockValorizado.findFirst({
+              where: {
+                codigo: codigoAsNumber,
+              },
+            });
 
         const currentStock = product?.stock ?? 0;
 
-        let calculatedStock = currentStock;
+        let calculatedStock: number | null = isInventoryOperation ? currentStock : null;
 
         if (type === 'ENTRADA') {
           calculatedStock = currentStock + quantity;
@@ -133,7 +134,7 @@ export class InventoryMovementsService {
           toNullableNumber(item.totalPrice) ??
           (unitPrice !== null ? quantity * unitPrice : null);
 
-        if (product) {
+        if (product && isInventoryOperation && calculatedStock !== null) {
           await tx.stockValorizado.update({
             where: {
               index: product.index,

@@ -13,6 +13,13 @@ export type UploadedExcelFile = {
   size?: number;
 };
 
+export type AuditActor = {
+  email?: string | null;
+  username?: string | null;
+  name?: string | null;
+  role?: string | null;
+};
+
 type ExcelRow = Record<string, unknown>;
 type ImportType = 'products' | 'customers' | 'suppliers';
 
@@ -234,11 +241,45 @@ function pushError(summary: ImportSummary, row: number, reason: string) {
   }
 }
 
+function getActorLabel(actor?: AuditActor | null) {
+  return (
+    actor?.email?.trim() ||
+    actor?.username?.trim() ||
+    actor?.name?.trim() ||
+    'Sistema SICD'
+  );
+}
+
+function getImportTypeLabel(type: ImportType) {
+  if (type === 'products') {
+    return 'productos';
+  }
+
+  if (type === 'customers') {
+    return 'clientes';
+  }
+
+  return 'proveedores';
+}
+
+function getBulkImportMovementType(type: ImportType) {
+  if (type === 'products') {
+    return 'CARGA_MASIVA_PRODUCTOS';
+  }
+
+  if (type === 'customers') {
+    return 'CARGA_MASIVA_CLIENTES';
+  }
+
+  return 'CARGA_MASIVA_PROVEEDORES';
+}
+
+
 @Injectable()
 export class ImportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async importProducts(file: UploadedExcelFile) {
+  async importProducts(file: UploadedExcelFile, actor?: AuditActor | null) {
     const rows = this.getRowsFromExcel(file);
     const summary = createEmptySummary('products', file.originalname, rows.length);
 
@@ -279,10 +320,12 @@ export class ImportsService {
       }
     }
 
+    await this.registerBulkImportMovement(summary, actor);
+
     return summary;
   }
 
-  async importCustomers(file: UploadedExcelFile) {
+  async importCustomers(file: UploadedExcelFile, actor?: AuditActor | null) {
     const rows = this.getRowsFromExcel(file);
     const summary = createEmptySummary('customers', file.originalname, rows.length);
 
@@ -313,10 +356,12 @@ export class ImportsService {
       }
     }
 
+    await this.registerBulkImportMovement(summary, actor);
+
     return summary;
   }
 
-  async importSuppliers(file: UploadedExcelFile) {
+  async importSuppliers(file: UploadedExcelFile, actor?: AuditActor | null) {
     const rows = this.getRowsFromExcel(file);
     const summary = createEmptySummary('suppliers', file.originalname, rows.length);
 
@@ -346,6 +391,8 @@ export class ImportsService {
         );
       }
     }
+
+    await this.registerBulkImportMovement(summary, actor);
 
     return summary;
   }
@@ -421,6 +468,40 @@ export class ImportsService {
       phone: toNullableString(getRowValue(row, SUPPLIER_ALIASES.phone)),
       email: toNullableString(getRowValue(row, SUPPLIER_ALIASES.email)),
     };
+  }
+
+  private async registerBulkImportMovement(
+    summary: ImportSummary,
+    actor?: AuditActor | null,
+  ) {
+    if (summary.processedRows <= 0) {
+      return;
+    }
+
+    const label = getImportTypeLabel(summary.type);
+    const movementType = getBulkImportMovementType(summary.type);
+    const actionLabel = `Carga masiva de ${label}`;
+
+    await this.prisma.inventoryMovement.create({
+      data: {
+        codigo: movementType,
+        productName: actionLabel,
+        type: movementType,
+        quantity: summary.processedRows,
+        unitPrice: null,
+        totalPrice: null,
+        stockAfter: null,
+        reason: 'Carga masiva Excel',
+        user: getActorLabel(actor),
+        detail:
+          `${movementType}: ${actionLabel}. Archivo: ${summary.fileName}. ` +
+          `Filas leídas: ${summary.totalRows}. ` +
+          `Procesadas: ${summary.processedRows}. ` +
+          `Creadas: ${summary.created}. ` +
+          `Actualizadas: ${summary.updated}. ` +
+          `Omitidas: ${summary.skipped}.`,
+      },
+    });
   }
 
   private async saveProduct(product: NormalizedProductRow) {
@@ -503,29 +584,6 @@ export class ImportsService {
           },
         });
       }
-
-      const previousStock = existingStock?.stock ?? 0;
-      const stockDifference = product.stock - previousStock;
-
-      await tx.inventoryMovement.create({
-        data: {
-          codigo: product.codigo,
-          productName: displayName,
-          type: 'AJUSTE',
-          quantity: Math.abs(stockDifference),
-          unitPrice: product.prcosto,
-          totalPrice:
-            product.prcosto !== null
-              ? Math.abs(stockDifference) * product.prcosto
-              : null,
-          stockAfter: product.stock,
-          reason: 'Carga masiva Excel',
-          user: 'Sistema',
-          detail: existingStock
-            ? `Stock actualizado por carga masiva. Stock anterior: ${previousStock}. Stock nuevo: ${product.stock}.`
-            : `Producto creado por carga masiva. Stock inicial: ${product.stock}.`,
-        },
-      });
     });
 
     return !existingStock;

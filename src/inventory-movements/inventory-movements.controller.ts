@@ -4,7 +4,7 @@ import { InventoryMovementsService } from './inventory-movements.service';
 export type CreateInventoryMovementBody = {
   codigo?: string;
   productName?: string;
-  type?: 'ENTRADA' | 'SALIDA' | 'AJUSTE' | 'Entrada' | 'Salida' | 'Ajuste';
+  type?: string;
   quantity?: number;
   unitPrice?: number | null;
   totalPrice?: number | null;

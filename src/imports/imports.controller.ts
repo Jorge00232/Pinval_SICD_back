@@ -2,16 +2,20 @@ import {
   BadRequestException,
   Controller,
   Post,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { ImportsService } from './imports.service';
-import type { UploadedExcelFile } from './imports.service';
+import type { AuditActor, UploadedExcelFile } from './imports.service';
+
+type AuthRequest = Request & { user?: AuditActor };
 
 const excelFileInterceptor = FileInterceptor('file', {
   limits: {
@@ -27,23 +31,32 @@ export class ImportsController {
 
   @Post('products/excel')
   @UseInterceptors(excelFileInterceptor)
-  importProducts(@UploadedFile() file?: UploadedExcelFile) {
+  importProducts(
+    @UploadedFile() file: UploadedExcelFile | undefined,
+    @Req() request: AuthRequest,
+  ) {
     this.validateFile(file);
-    return this.importsService.importProducts(file);
+    return this.importsService.importProducts(file, request.user);
   }
 
   @Post('customers/excel')
   @UseInterceptors(excelFileInterceptor)
-  importCustomers(@UploadedFile() file?: UploadedExcelFile) {
+  importCustomers(
+    @UploadedFile() file: UploadedExcelFile | undefined,
+    @Req() request: AuthRequest,
+  ) {
     this.validateFile(file);
-    return this.importsService.importCustomers(file);
+    return this.importsService.importCustomers(file, request.user);
   }
 
   @Post('suppliers/excel')
   @UseInterceptors(excelFileInterceptor)
-  importSuppliers(@UploadedFile() file?: UploadedExcelFile) {
+  importSuppliers(
+    @UploadedFile() file: UploadedExcelFile | undefined,
+    @Req() request: AuthRequest,
+  ) {
     this.validateFile(file);
-    return this.importsService.importSuppliers(file);
+    return this.importsService.importSuppliers(file, request.user);
   }
 
   private validateFile(file?: UploadedExcelFile): asserts file is UploadedExcelFile {
@@ -59,7 +72,7 @@ export class ImportsController {
     }
 
     if (!file.buffer?.length) {
-      throw new BadRequestException('El archivo Excel esta vacio.');
+      throw new BadRequestException('El archivo Excel está vacío.');
     }
   }
 }
