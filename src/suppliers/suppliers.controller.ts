@@ -42,13 +42,17 @@ export class SuppliersController {
 
   @Post()
   @Roles('ADMIN', 'STOCK')
-  create(@Body() body: CreateSupplierBody) {
-    return this.suppliersService.create(body);
+  create(@Body() body: CreateSupplierBody, @Req() request: AuthRequest) {
+    return this.suppliersService.create(body, request.user);
   }
 
   @Patch(':id')
   @Roles('ADMIN', 'STOCK')
-  update(@Param('id') id: string, @Body() body: UpdateSupplierBody) {
-    return this.suppliersService.update(id, body);
+  update(
+    @Param('id') id: string,
+    @Body() body: UpdateSupplierBody,
+    @Req() request: AuthRequest,
+  ) {
+    return this.suppliersService.update(id, body, request.user);
   }
 }

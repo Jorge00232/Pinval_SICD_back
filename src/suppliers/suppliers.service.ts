@@ -15,6 +15,13 @@ import type {
   UpdateSupplierBody,
 } from './suppliers.controller';
 
+type AuditActor = {
+  email?: string | null;
+  username?: string | null;
+  name?: string | null;
+  role?: string | null;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? '').trim();
 }
@@ -40,6 +47,15 @@ function normalizeEmail(value: unknown) {
   return normalizedEmail;
 }
 
+function getActorLabel(actor?: AuditActor | null) {
+  return (
+    actor?.email?.trim() ||
+    actor?.username?.trim() ||
+    actor?.name?.trim() ||
+    'Sistema SICD'
+  );
+}
+
 @Injectable()
 export class SuppliersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -57,7 +73,7 @@ export class SuppliersService {
     return suppliers.map((supplier) => this.toResponse(supplier, role));
   }
 
-  async create(body: CreateSupplierBody) {
+  async create(body: CreateSupplierBody, actor?: AuditActor | null) {
     const name = normalizeText(body.name);
 
     if (!name) {
@@ -77,10 +93,12 @@ export class SuppliersService {
       },
     });
 
+    await this.registerSupplierMovement('PROVEEDOR_CREADO', supplier, actor);
+
     return this.toResponse(supplier, 'ADMIN');
   }
 
-  async update(id: string, body: UpdateSupplierBody) {
+  async update(id: string, body: UpdateSupplierBody, actor?: AuditActor | null) {
     const cleanId = normalizeText(id);
 
     if (!cleanId) {
@@ -143,7 +161,35 @@ export class SuppliersService {
       data,
     });
 
+    await this.registerSupplierMovement('PROVEEDOR_ACTUALIZADO', updatedSupplier, actor);
+
     return this.toResponse(updatedSupplier, 'ADMIN');
+  }
+
+  private async registerSupplierMovement(
+    type: 'PROVEEDOR_CREADO' | 'PROVEEDOR_ACTUALIZADO',
+    supplier: Supplier,
+    actor?: AuditActor | null,
+  ) {
+    const actionLabel = type === 'PROVEEDOR_CREADO' ? 'Proveedor creado' : 'Proveedor actualizado';
+    const statusLabel = supplier.isActive ? 'Activo' : 'Inactivo';
+    const identifier = supplier.identifier ? ` | RUT: ${supplier.identifier}` : '';
+    const email = supplier.email ? ` | Correo: ${supplier.email}` : '';
+
+    await this.prisma.inventoryMovement.create({
+      data: {
+        codigo: 'PROVEEDOR',
+        productName: supplier.name,
+        type,
+        quantity: 1,
+        unitPrice: null,
+        totalPrice: null,
+        stockAfter: null,
+        reason: actionLabel,
+        user: getActorLabel(actor),
+        detail: `${actionLabel}: ${supplier.name}${identifier}${email} | Estado: ${statusLabel}`,
+      },
+    });
   }
 
   private toResponse(supplier: Supplier, role?: string | null) {

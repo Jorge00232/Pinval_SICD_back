@@ -15,6 +15,13 @@ import type {
   UpdateCustomerBody,
 } from './customers.controller';
 
+type AuditActor = {
+  email?: string | null;
+  username?: string | null;
+  name?: string | null;
+  role?: string | null;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? '').trim();
 }
@@ -38,6 +45,15 @@ function normalizeCustomerType(value: unknown) {
   throw new BadRequestException('El tipo de cliente debe ser B2B o B2C.');
 }
 
+function getActorLabel(actor?: AuditActor | null) {
+  return (
+    actor?.email?.trim() ||
+    actor?.username?.trim() ||
+    actor?.name?.trim() ||
+    'Sistema SICD'
+  );
+}
+
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -55,7 +71,7 @@ export class CustomersService {
     return customers.map((customer) => this.toResponse(customer, role));
   }
 
-  async create(body: CreateCustomerBody) {
+  async create(body: CreateCustomerBody, actor?: AuditActor | null) {
     const name = normalizeText(body.name);
 
     if (!name) {
@@ -76,10 +92,12 @@ export class CustomersService {
       },
     });
 
+    await this.registerCustomerMovement('CLIENTE_CREADO', customer, actor);
+
     return this.toResponse(customer, 'ADMIN');
   }
 
-  async update(id: string, body: UpdateCustomerBody) {
+  async update(id: string, body: UpdateCustomerBody, actor?: AuditActor | null) {
     const cleanId = normalizeText(id);
 
     if (!cleanId) {
@@ -137,7 +155,34 @@ export class CustomersService {
       data,
     });
 
+    await this.registerCustomerMovement('CLIENTE_ACTUALIZADO', updatedCustomer, actor);
+
     return this.toResponse(updatedCustomer, 'ADMIN');
+  }
+
+  private async registerCustomerMovement(
+    type: 'CLIENTE_CREADO' | 'CLIENTE_ACTUALIZADO',
+    customer: Customer,
+    actor?: AuditActor | null,
+  ) {
+    const actionLabel = type === 'CLIENTE_CREADO' ? 'Cliente creado' : 'Cliente actualizado';
+    const statusLabel = customer.isActive ? 'Activo' : 'Inactivo';
+    const identifier = customer.identifier ? ` | RUT: ${customer.identifier}` : '';
+
+    await this.prisma.inventoryMovement.create({
+      data: {
+        codigo: 'CLIENTE',
+        productName: customer.name,
+        type,
+        quantity: 1,
+        unitPrice: null,
+        totalPrice: null,
+        stockAfter: null,
+        reason: actionLabel,
+        user: getActorLabel(actor),
+        detail: `${actionLabel}: ${customer.name}${identifier} | Tipo: ${customer.customerType} | Estado: ${statusLabel}`,
+      },
+    });
   }
 
   private toResponse(customer: Customer, role?: string | null) {

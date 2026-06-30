@@ -5,12 +5,14 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import type { UserRole } from '../auth/auth.types';
+import type { AuthenticatedUser, UserRole } from '../auth/auth.types';
 import { UsersService } from './users.service';
 
 type CreateUserBody = {
@@ -33,6 +35,8 @@ type UpdateUserBody = {
   isActive?: boolean;
 };
 
+type AuthRequest = Request & { user?: AuthenticatedUser };
+
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
@@ -45,17 +49,21 @@ export class UsersController {
   }
 
   @Post()
-  create(@Body() body: CreateUserBody) {
-    return this.usersService.create(body);
+  create(@Body() body: CreateUserBody, @Req() request: AuthRequest) {
+    return this.usersService.create(body, request.user);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: UpdateUserBody) {
-    return this.usersService.update(id, body);
+  update(
+    @Param('id') id: string,
+    @Body() body: UpdateUserBody,
+    @Req() request: AuthRequest,
+  ) {
+    return this.usersService.update(id, body, request.user);
   }
 
   @Patch(':id/reset-2fa')
-  resetTwoFactor(@Param('id') id: string) {
-    return this.usersService.resetTwoFactor(id);
+  resetTwoFactor(@Param('id') id: string, @Req() request: AuthRequest) {
+    return this.usersService.resetTwoFactor(id, request.user);
   }
 }

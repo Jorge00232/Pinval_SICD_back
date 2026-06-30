@@ -41,13 +41,17 @@ export class CustomersController {
 
   @Post()
   @Roles('ADMIN', 'STOCK')
-  create(@Body() body: CreateCustomerBody) {
-    return this.customersService.create(body);
+  create(@Body() body: CreateCustomerBody, @Req() request: AuthRequest) {
+    return this.customersService.create(body, request.user);
   }
 
   @Patch(':id')
   @Roles('ADMIN', 'STOCK')
-  update(@Param('id') id: string, @Body() body: UpdateCustomerBody) {
-    return this.customersService.update(id, body);
+  update(
+    @Param('id') id: string,
+    @Body() body: UpdateCustomerBody,
+    @Req() request: AuthRequest,
+  ) {
+    return this.customersService.update(id, body, request.user);
   }
 }

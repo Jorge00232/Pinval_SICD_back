@@ -8,6 +8,13 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UserRole } from '../auth/auth.types';
 
+type AuditActor = {
+  email?: string | null;
+  username?: string | null;
+  name?: string | null;
+  role?: string | null;
+};
+
 type CreateUserInput = {
   username?: string;
   email?: string;
@@ -58,6 +65,31 @@ type SafeUser = {
 
 const ALLOWED_ROLES: UserRole[] = ['ADMIN', 'STOCK', 'VIEWER'];
 
+function getActorLabel(actor?: AuditActor | null) {
+  return (
+    actor?.email?.trim() ||
+    actor?.username?.trim() ||
+    actor?.name?.trim() ||
+    'Sistema SICD'
+  );
+}
+
+function getRoleLabel(role: string) {
+  if (role === 'ADMIN') {
+    return 'Administrador';
+  }
+
+  if (role === 'STOCK') {
+    return 'Stock';
+  }
+
+  if (role === 'VIEWER') {
+    return 'Consulta';
+  }
+
+  return role;
+}
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -77,7 +109,7 @@ export class UsersService {
     return users.map((user) => this.toSafeUser(user));
   }
 
-  async create(input: CreateUserInput) {
+  async create(input: CreateUserInput, actor?: AuditActor | null) {
     const email = this.normalizeEmail(input.email);
     const username = this.normalizeOptionalText(input.username);
     const name = this.normalizeRequiredText(input.name, 'El nombre es obligatorio.');
@@ -106,6 +138,8 @@ export class UsersService {
         },
       });
 
+      await this.registerUserMovement('USUARIO_CREADO', user, actor);
+
       return this.toSafeUser(user);
     } catch (error) {
       this.handleUniqueConstraintError(error);
@@ -113,7 +147,7 @@ export class UsersService {
     }
   }
 
-  async update(id: string, input: UpdateUserInput) {
+  async update(id: string, input: UpdateUserInput, actor?: AuditActor | null) {
     const currentUser = await this.findUserByIdOrThrow(id);
 
     const data: {
@@ -174,6 +208,8 @@ export class UsersService {
         data,
       });
 
+      await this.registerUserMovement('USUARIO_ACTUALIZADO', updatedUser, actor);
+
       return this.toSafeUser(updatedUser);
     } catch (error) {
       this.handleUniqueConstraintError(error);
@@ -181,7 +217,7 @@ export class UsersService {
     }
   }
 
-  async resetTwoFactor(id: string) {
+  async resetTwoFactor(id: string, actor?: AuditActor | null) {
     const currentUser = await this.findUserByIdOrThrow(id);
 
     const updatedUser = await this.prisma.user.update({
@@ -193,7 +229,39 @@ export class UsersService {
       },
     });
 
+    await this.registerUserMovement('USUARIO_2FA_REINICIADO', updatedUser, actor);
+
     return this.toSafeUser(updatedUser);
+  }
+
+  private async registerUserMovement(
+    type: 'USUARIO_CREADO' | 'USUARIO_ACTUALIZADO' | 'USUARIO_2FA_REINICIADO',
+    user: DbUser,
+    actor?: AuditActor | null,
+  ) {
+    const actionLabel =
+      type === 'USUARIO_CREADO'
+        ? 'Usuario creado'
+        : type === 'USUARIO_ACTUALIZADO'
+          ? 'Usuario actualizado'
+          : '2FA reiniciado';
+    const statusLabel = user.isActive ? 'Activo' : 'Inactivo';
+    const googleLabel = user.allowGoogle ? 'Google permitido' : 'Google no permitido';
+
+    await this.prisma.inventoryMovement.create({
+      data: {
+        codigo: 'USUARIO',
+        productName: user.name,
+        type,
+        quantity: 1,
+        unitPrice: null,
+        totalPrice: null,
+        stockAfter: null,
+        reason: actionLabel,
+        user: getActorLabel(actor),
+        detail: `${actionLabel}: ${user.name} | Correo: ${user.email} | Rol: ${getRoleLabel(user.role)} | Estado: ${statusLabel} | ${googleLabel}`,
+      },
+    });
   }
 
   private async findUserByIdOrThrow(id: string): Promise<DbUser> {
