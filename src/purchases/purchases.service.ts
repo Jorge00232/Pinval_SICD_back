@@ -138,9 +138,14 @@ export class PurchasesService {
 
   async findAll() {
     const purchases = await this.prisma.purchase.findMany({
-      orderBy: {
-        date: 'desc',
-      },
+      orderBy: [
+        {
+          createdAt: 'desc',
+        },
+        {
+          date: 'desc',
+        },
+      ],
       include: {
         items: true,
       },
@@ -283,7 +288,6 @@ export class PurchasesService {
             reason: `Factura ${documentNumber} - ${supplierName}`,
             user: user?.email || user?.username || user?.name || null,
             detail: user?.role ?? null,
-            createdAt: date,
           },
         });
 

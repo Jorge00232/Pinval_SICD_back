@@ -180,9 +180,14 @@ export class SalesService {
 
   async findAll(role?: string | null) {
     const sales = await this.prisma.sale.findMany({
-      orderBy: {
-        date: 'desc',
-      },
+      orderBy: [
+        {
+          createdAt: 'desc',
+        },
+        {
+          date: 'desc',
+        },
+      ],
       include: {
         items: true,
       },
@@ -354,7 +359,6 @@ export class SalesService {
               `${customerName} | Tipo: ${customerType}${identifierDetail}`,
             user: user?.email || user?.username || user?.name || null,
             detail: user?.role ?? null,
-            createdAt: date,
           },
         });
 
